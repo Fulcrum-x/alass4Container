@@ -191,8 +191,8 @@ def get_options():
 
 # Main function
 def main():
-    print("MKV Subtitle Synchronizer")
-    print("------------------------")
+    print("alass4Container")
+    print("---------------------------------------------")
     
     # Check for required tools
     try:
