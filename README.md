@@ -25,8 +25,8 @@ This tool combines the powerful synchronization capabilities of alass with the c
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/mkv-subtitle-synchronizer.git
-   cd mkv-subtitle-synchronizer
+   git clone https://github.com/Fulcrum-x/alass4Container.git
+   cd alass4Container
    ```
 
 2. Install required Python dependencies:
