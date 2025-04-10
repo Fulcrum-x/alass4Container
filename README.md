@@ -49,7 +49,7 @@ This tool combines the powerful synchronization capabilities of alass with the c
 
 Run the script:
 ```
-python mkv_subtitle_sync.py
+python alass4Container.py
 ```
 
 The tool will guide you through the following steps:
