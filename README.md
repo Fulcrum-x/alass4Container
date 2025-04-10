@@ -1,5 +1,3 @@
-# THIS REPO IS NOT YET FUNCTIONAL
-
 # alass4Container
 
 A Python tool that automatically synchronizes subtitle tracks on the selected MKV using alass (Automatic Language-Agnostic Subtitle Synchronization).
