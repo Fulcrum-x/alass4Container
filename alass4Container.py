@@ -5,6 +5,9 @@ import sys
 import json
 import tkinter as tk
 from tkinter import filedialog, simpledialog, messagebox
+from pathlib import Path
+import shutil
+import re
 from rich.console import Console
 from rich.progress import Progress, TextColumn, BarColumn, SpinnerColumn, TimeRemainingColumn
 from rich.panel import Panel
@@ -12,9 +15,6 @@ from rich.text import Text
 
 # Initialize Rich console
 console = Console()
-from pathlib import Path
-import shutil
-import re
 
 # Global variables to store tool paths
 MKVMERGE_PATH = None
@@ -143,6 +143,18 @@ def select_mkv_file():
         sys.exit(0)
     return file_path
 
+# Create a class to store track information
+class SubtitleTrack:
+    def __init__(self, track_id, language, track_name, codec, properties=None):
+        self.track_id = track_id
+        self.language = language
+        self.track_name = track_name
+        self.codec = codec
+        self.properties = properties or {}
+        self.output_file = None
+        self.ext = None
+        self.corrected_file = None
+
 # Function to extract subtitle information from MKV
 def get_subtitle_tracks(mkv_file):
     try:
@@ -159,27 +171,47 @@ def get_subtitle_tracks(mkv_file):
             if track.get('type') == 'subtitles':
                 track_id = track.get('id')
                 properties = track.get('properties', {})
+                
+                # Get full language code including region if available
                 language = properties.get('language', 'und')  # Default to 'und' (undefined) if no language
+                
+                # Check for language-specific tags that might contain region info
+                if 'language_ietf' in properties:
+                    # IETF language tags (like pt-BR, es-419, zh-Hant) take precedence
+                    language = properties.get('language_ietf')
+                
                 track_name = properties.get('track_name', '')
                 codec = track.get('codec', '').lower()
                 
+                # Store additional useful properties
+                track_props = {
+                    'default_track': properties.get('default_track', False),
+                    'forced_track': properties.get('forced_track', False),
+                    'enabled_track': properties.get('enabled_track', True),
+                    'hearing_impaired': properties.get('hearing_impaired_flag', False),
+                    'visual_impaired': properties.get('visual_impaired_flag', False),
+                    'text_descriptions': properties.get('text_descriptions_flag', False),
+                    'original_language': properties.get('original_language', False),
+                    'commentary': properties.get('commentary_flag', False)
+                }
+                
                 if track_id is not None:
-                    subtitle_tracks.append((str(track_id), language, track_name, codec))
+                    subtitle_tracks.append(SubtitleTrack(
+                        str(track_id), language, track_name, codec, track_props
+                    ))
         
         return subtitle_tracks
     except subprocess.SubprocessError as e:
-        print(f"Error running mkvmerge: {e}")
+        console.print(f"[bold red]Error running mkvmerge: {e}[/bold red]")
         messagebox.showerror("Error", f"Failed to analyze MKV file: {e}")
         sys.exit(1)
     except json.JSONDecodeError as e:
-        print(f"Error parsing mkvmerge output: {e}")
+        console.print(f"[bold red]Error parsing mkvmerge output: {e}[/bold red]")
         messagebox.showerror("Error", f"Failed to parse MKV information: {e}")
         sys.exit(1)
 
-# These functions have been moved into the main() function to use progress bars
-
 # Function to create a new MKV with corrected subtitles
-def create_new_mkv(mkv_file, corrected_files):
+def create_new_mkv(mkv_file, corrected_tracks):
     output_file = os.path.splitext(mkv_file)[0] + ".corrected.mkv"
     
     try:
@@ -188,14 +220,41 @@ def create_new_mkv(mkv_file, corrected_files):
         
         # Add each corrected subtitle file
         # Sort them based on original track ID to preserve order
-        for track_id, language, track_name, subtitle_file in sorted(corrected_files, key=lambda x: int(x[0])):
-            cmd_extension = ["--language", f"0:{language}"]
+        for track in sorted(corrected_tracks, key=lambda x: int(x.track_id)):
+            # Start with language and default-track settings
+            cmd_extension = [
+                "--language", f"0:{track.language}",
+                "--default-track", "0:no"  # Set default track flag to 'no'
+            ]
             
             # Add track name if it exists
-            if track_name:
-                cmd_extension.extend(["--track-name", f"0:{track_name}"])
+            if track.track_name:
+                cmd_extension.extend(["--track-name", f"0:{track.track_name}"])
             
-            cmd_extension.append(subtitle_file)
+            # Add other track properties if they're set
+            props = track.properties
+            if props.get('forced_track', False):
+                cmd_extension.extend(["--forced-track", "0:yes"])
+            
+            if not props.get('enabled_track', True):
+                cmd_extension.extend(["--track-enabled", "0:no"])
+            
+            if props.get('hearing_impaired', False):
+                cmd_extension.extend(["--hearing-impaired-flag", "0:yes"])
+            
+            if props.get('visual_impaired', False):
+                cmd_extension.extend(["--visual-impaired-flag", "0:yes"])
+            
+            if props.get('text_descriptions', False):
+                cmd_extension.extend(["--text-descriptions-flag", "0:yes"])
+            
+            if props.get('original_language', False):
+                cmd_extension.extend(["--original-flag", "0:yes"])
+            
+            if props.get('commentary', False):
+                cmd_extension.extend(["--commentary-flag", "0:yes"])
+            
+            cmd_extension.append(track.corrected_file)
             cmd.extend(cmd_extension)
         
         # Run the command
@@ -255,40 +314,40 @@ def get_options():
 
 # Main function
 def main():
-    console.clear()
-    console.print(Panel.fit(
-        "[bold blue]alass4Container[/bold blue]",
-        border_style="cyan"
-    ))
-    
-    # Check for required tools
-    if not check_tools():
-        sys.exit(1)
-    
-    # Select MKV file
-    mkv_file = select_mkv_file()
-    console.print(f"Selected: [bold green]{mkv_file}[/bold green]")
-    
-    # Get user options
-    options = get_options()
-    
-    # Display options
-    option_text = Text()
-    option_text.append("Synchronization Options:\n", style="bold yellow")
-    if options.get("no_splits"):
-        option_text.append("• No Splits Mode: ", style="bold cyan")
-        option_text.append("Enabled (only constant time shifts will be applied)\n")
-    elif options.get("split_penalty") is not None:
-        option_text.append("• Split Penalty: ", style="bold cyan")
-        option_text.append(f"{options.get('split_penalty')} (higher values avoid splits)\n")
-    else:
-        option_text.append("• Split Penalty: ", style="bold cyan")
-        option_text.append("Default (7)\n")
-    console.print(Panel(option_text, border_style="cyan"))
-    
-    # Create temporary directory
-    with tempfile.TemporaryDirectory() as temp_dir:
-        try:
+    try:
+        console.clear()
+        console.print(Panel.fit(
+            "[bold blue]alass4Container[/bold blue]",
+            border_style="cyan"
+        ))
+        
+        # Check for required tools
+        if not check_tools():
+            sys.exit(1)
+        
+        # Select MKV file
+        mkv_file = select_mkv_file()
+        console.print(f"Selected: [bold green]{mkv_file}[/bold green]")
+        
+        # Get user options
+        options = get_options()
+        
+        # Display options
+        option_text = Text()
+        option_text.append("Synchronization Options:\n", style="bold yellow")
+        if options.get("no_splits"):
+            option_text.append("• No Splits Mode: ", style="bold cyan")
+            option_text.append("Enabled (only constant time shifts will be applied)\n")
+        elif options.get("split_penalty") is not None:
+            option_text.append("• Split Penalty: ", style="bold cyan")
+            option_text.append(f"{options.get('split_penalty')} (higher values avoid splits)\n")
+        else:
+            option_text.append("• Split Penalty: ", style="bold cyan")
+            option_text.append("Default (7)\n")
+        console.print(Panel(option_text, border_style="cyan"))
+        
+        # Create temporary directory
+        with tempfile.TemporaryDirectory() as temp_dir:
             # Get subtitle tracks
             with console.status("[cyan]Analyzing MKV file...[/cyan]", spinner="dots"):
                 subtitle_tracks = get_subtitle_tracks(mkv_file)
@@ -300,8 +359,8 @@ def main():
             
             # Display found tracks in a nice format
             console.print(f"[bold green]Found {len(subtitle_tracks)} subtitle tracks:[/bold green]")
-            for track_id, language, track_name, codec in subtitle_tracks:
-                console.print(f"  [cyan]•[/cyan] Track [bold]{track_id}[/bold]: Language=[yellow]{language}[/yellow], Name={track_name or 'N/A'}, Codec=[italic]{codec}[/italic]")
+            for track in subtitle_tracks:
+                console.print(f"  [cyan]•[/cyan] Track [bold]{track.track_id}[/bold]: Language=[yellow]{track.language}[/yellow], Name={track.track_name or 'N/A'}, Codec=[italic]{track.codec}[/italic]")
             
             # Extract subtitles with progress bar
             console.print("\n[bold]Extracting subtitles...[/bold]")
@@ -315,38 +374,41 @@ def main():
             ) as progress:
                 task = progress.add_task("[cyan]Extracting...[/cyan]", total=len(subtitle_tracks))
                 
-                extracted_files = []
-                for track_id, language, track_name, codec in subtitle_tracks:
+                # Extract subtitle tracks
+                extracted_tracks = []
+                for track in subtitle_tracks:
                     # Determine the appropriate extension based on codec
                     ext = "srt"
-                    if "ass" in codec or "ssa" in codec:
+                    if "ass" in track.codec or "ssa" in track.codec:
                         ext = "ass"
-                    elif "vobsub" in codec:
+                    elif "vobsub" in track.codec:
                         ext = "idx"
-                    elif "pgs" in codec:
-                        progress.update(task, advance=1, description=f"[yellow]Skipping PGS track {track_id}...[/yellow]")
+                    elif "pgs" in track.codec:
+                        progress.update(task, advance=1, description=f"[yellow]Skipping PGS track {track.track_id}...[/yellow]")
                         continue
                     
-                    output_file = os.path.join(temp_dir, f"{track_id}.{language}.{ext}")
+                    output_file = os.path.join(temp_dir, f"{track.track_id}.{track.language}.{ext}")
+                    track.ext = ext
+                    track.output_file = output_file
                     
-                    progress.update(task, description=f"[cyan]Extracting track {track_id} ({language})...[/cyan]")
+                    progress.update(task, description=f"[cyan]Extracting track {track.track_id} ({track.language})...[/cyan]")
                     
                     try:
                         # Use mkvextract to extract the subtitle track
-                        cmd = [MKVEXTRACT_PATH, "tracks", mkv_file, f"{track_id}:{output_file}"]
+                        cmd = [MKVEXTRACT_PATH, "tracks", mkv_file, f"{track.track_id}:{output_file}"]
                         subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
                         
                         # Check if the file exists and is not empty
                         if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                            extracted_files.append((track_id, language, track_name, output_file, ext))
+                            extracted_tracks.append(track)
                         else:
-                            progress.update(task, description=f"[red]Failed to extract track {track_id}[/red]")
+                            progress.update(task, description=f"[red]Failed to extract track {track.track_id}[/red]")
                     except subprocess.SubprocessError as e:
-                        progress.update(task, description=f"[bold red]Error on track {track_id}[/bold red]")
+                        progress.update(task, description=f"[bold red]Error on track {track.track_id}[/bold red]")
                     
                     progress.update(task, advance=1)
             
-            if not extracted_files:
+            if not extracted_tracks:
                 console.print("[bold red]Failed to extract any subtitle tracks.[/bold red]")
                 messagebox.showwarning("Extraction Failed", "Failed to extract any subtitle tracks from the MKV file.")
                 return
@@ -361,14 +423,15 @@ def main():
                 TimeRemainingColumn(),
                 console=console
             ) as progress:
-                task = progress.add_task("[cyan]Synchronizing...[/cyan]", total=len(extracted_files))
+                task = progress.add_task("[cyan]Synchronizing...[/cyan]", total=len(extracted_tracks))
                 
-                corrected_files = []
-                for track_id, language, track_name, subtitle_file, ext in extracted_files:
+                corrected_tracks = []
+                for track in extracted_tracks:
                     # Define output file path for corrected subtitle
-                    corrected_file = os.path.join(temp_dir, f"{track_id}.{language}.corrected.{ext}")
+                    corrected_file = os.path.join(temp_dir, f"{track.track_id}.{track.language}.corrected.{track.ext}")
+                    track.corrected_file = corrected_file
                     
-                    progress.update(task, description=f"[cyan]Synchronizing track {track_id} ({language})...[/cyan]")
+                    progress.update(task, description=f"[cyan]Synchronizing track {track.track_id} ({track.language})...[/cyan]")
                     
                     try:
                         # Build the alass command
@@ -381,21 +444,21 @@ def main():
                             cmd.append("--no-splits")
                         
                         # Add the reference, input file, and output file
-                        cmd.extend([mkv_file, subtitle_file, corrected_file])
+                        cmd.extend([mkv_file, track.output_file, corrected_file])
                         
                         subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
                         
                         # Check if the corrected file was created
                         if os.path.exists(corrected_file) and os.path.getsize(corrected_file) > 0:
-                            corrected_files.append((track_id, language, track_name, corrected_file))
+                            corrected_tracks.append(track)
                         else:
-                            progress.update(task, description=f"[red]Failed to synchronize track {track_id}[/red]")
+                            progress.update(task, description=f"[red]Failed to synchronize track {track.track_id}[/red]")
                     except subprocess.SubprocessError as e:
-                        progress.update(task, description=f"[bold red]Error on track {track_id}[/bold red]")
+                        progress.update(task, description=f"[bold red]Error on track {track.track_id}[/bold red]")
                     
                     progress.update(task, advance=1)
             
-            if not corrected_files:
+            if not corrected_tracks:
                 console.print("[bold red]Failed to synchronize any subtitle tracks.[/bold red]")
                 messagebox.showwarning("Synchronization Failed", "Failed to synchronize any subtitle tracks.")
                 return
@@ -403,7 +466,7 @@ def main():
             # Create new MKV with corrected subtitles
             console.print("\n[bold]Creating new MKV with corrected subtitles...[/bold]")
             with console.status("[cyan]Remuxing MKV file...[/cyan]", spinner="dots"):
-                output_file = create_new_mkv(mkv_file, corrected_files)
+                output_file = create_new_mkv(mkv_file, corrected_tracks)
             
             if output_file:
                 result_text = f"Done! Corrected MKV saved as:\n[bold green]{output_file}[/bold green]"
@@ -411,12 +474,14 @@ def main():
                 messagebox.showinfo("Success", f"Done! Corrected MKV saved as:\n{output_file}")
             else:
                 console.print("[bold red]Failed to create the output MKV file.[/bold red]")
-        
-        except Exception as e:
-            error_msg = f"An unexpected error occurred: {e}"
-            console.print(f"[bold red]{error_msg}[/bold red]")
-            messagebox.showerror("Error", error_msg)
-            sys.exit(1)
+    
+    except Exception as e:
+        error_msg = f"An unexpected error occurred: {str(e)}"
+        console.print(f"[bold red]{error_msg}[/bold red]")
+        traceback_info = f"\nTraceback details: {sys.exc_info()[0]}, {sys.exc_info()[1]}"
+        console.print(f"[yellow]{traceback_info}[/yellow]")
+        messagebox.showerror("Error", error_msg)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
