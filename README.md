@@ -97,6 +97,10 @@ Make sure MKVToolNix and alass are installed and added to your system PATH.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
 ## Acknowledgments
 
 - [alass](https://github.com/kaegi/alass) - The underlying subtitle synchronization engine
