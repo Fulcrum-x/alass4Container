@@ -93,10 +93,6 @@ Make sure MKVToolNix and alass are installed and added to your system PATH.
 - Check disk space
 - Ensure you have write permissions for the output directory
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
