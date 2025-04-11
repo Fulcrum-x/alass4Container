@@ -255,6 +255,7 @@ def get_options():
 
 # Main function
 def main():
+    console.clear()
     console.print(Panel.fit(
         "[bold blue]alass4Container[/bold blue]",
         border_style="cyan"
