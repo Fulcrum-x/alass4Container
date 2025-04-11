@@ -269,34 +269,36 @@ def get_options():
     root = tk.Tk()
     root.withdraw()  # Hide the main window
     
-    # Ask if the user wants to adjust the split penalty
-    adjust_split = simpledialog.askstring(
-        "Split Penalty",
-        "Do you want to adjust the split penalty? (yes/no)\nDefault is 7, higher values avoid splits.",
+    # Ask if the user wants to disable splits entirely first
+    # This is more logical as it would override any split penalty setting
+    no_splits = messagebox.askyesno(
+        "No Splits Mode",
+        "Do you want to disable splits entirely?\nOnly constant time shifts will be applied.",
         parent=root
     )
     
-    if adjust_split and adjust_split.lower() == 'yes':
-        split_penalty = simpledialog.askfloat(
-            "Split Penalty Value",
-            "Enter a value between 0 and 1000 (default is 7):\nHigher values make splits less likely.",
-            parent=root,
-            minvalue=0,
-            maxvalue=1000
+    if no_splits:
+        options["no_splits"] = True
+    else:
+        # Only ask about split penalty if we're not disabling splits entirely
+        adjust_split = messagebox.askyesno(
+            "Split Penalty",
+            "Do you want to adjust the split penalty?\nDefault is 7, higher values avoid splits.",
+            parent=root
         )
         
-        if split_penalty is not None:
-            options["split_penalty"] = split_penalty
-    
-    # Ask if the user wants to disable splits entirely
-    no_splits = simpledialog.askstring(
-        "No Splits",
-        "Do you want to disable splits entirely? (yes/no)\nOnly constant time shifts will be applied.",
-        parent=root
-    )
-    
-    if no_splits and no_splits.lower() == 'yes':
-        options["no_splits"] = True
+        if adjust_split:
+            split_penalty = simpledialog.askfloat(
+                "Split Penalty Value",
+                "Enter a value between 0 and 1000 (default is 7):\nHigher values make splits less likely.",
+                parent=root,
+                minvalue=0,
+                maxvalue=1000,
+                initialvalue=7  # Show the default value
+            )
+            
+            if split_penalty is not None:
+                options["split_penalty"] = split_penalty
     
     root.destroy()
     return options
