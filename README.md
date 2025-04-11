@@ -31,7 +31,7 @@ This tool combines the powerful synchronization capabilities of alass with the c
 
 2. Install required Python dependencies:
    ```
-   pip install tkinter
+   pip install -r requirements.txt
    ```
 
 3. Install external tools:
