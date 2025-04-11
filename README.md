@@ -101,6 +101,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [alass](https://github.com/kaegi/alass) - The underlying subtitle synchronization engine
 - [MKVToolNix](https://mkvtoolnix.download/) - Tools for manipulating MKV files
+- [rich](https://github.com/Textualize/rich) - Beautiful formatting in the terminal
 
 ## TODO
 
