@@ -47,6 +47,10 @@ This tool combines the powerful synchronization capabilities of alass with the c
 
 ## Usage
 
+
+https://github.com/user-attachments/assets/d310b665-61ea-4f17-bfda-384045781fc6
+
+
 Run the script:
 ```
 python alass4Container.py
