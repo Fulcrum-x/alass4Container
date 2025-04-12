@@ -14,7 +14,7 @@ import shutil
 import re
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Third-party imports
 import tkinter as tk
@@ -51,6 +51,7 @@ class SubtitleTrack:
     language: str
     track_name: str
     codec: str
+    properties: Dict[str, Any] = field(default_factory=dict)
     file_path: Optional[str] = None
     corrected_path: Optional[str] = None
     
@@ -266,16 +267,37 @@ class AlassContainer:
                 if track.get('type') == 'subtitles':
                     track_id = track.get('id')
                     properties = track.get('properties', {})
+                    
+                    # Get full language code including region if available
                     language = properties.get('language', 'und')  # Default to 'und' (undefined) if no language
+                    
+                    # Check for language-specific tags that might contain region info
+                    if 'language_ietf' in properties:
+                        # IETF language tags (like pt-BR, es-419, zh-Hant) take precedence
+                        language = properties.get('language_ietf')
+                    
                     track_name = properties.get('track_name', '')
                     codec = track.get('codec', '').lower()
+                    
+                    # Extract track properties for later use
+                    track_props = {
+                        'default_track': properties.get('default_track', False),
+                        'forced_track': properties.get('forced_track', False),
+                        'enabled_track': properties.get('enabled_track', True),
+                        'hearing_impaired': properties.get('hearing_impaired_flag', False),
+                        'visual_impaired': properties.get('visual_impaired_flag', False),
+                        'text_descriptions': properties.get('text_descriptions_flag', False),
+                        'original_language': properties.get('original_language', False),
+                        'commentary': properties.get('commentary_flag', False)
+                    }
                     
                     if track_id is not None:
                         tracks.append(SubtitleTrack(
                             track_id=str(track_id),
                             language=language,
                             track_name=track_name,
-                            codec=codec
+                            codec=codec,
+                            properties=track_props
                         ))
             
             return tracks
@@ -484,11 +506,45 @@ class AlassContainer:
             # Add each corrected subtitle file
             # Sort them based on original track ID to preserve order
             for track in sorted(subtitle_tracks, key=lambda x: int(x.track_id)):
-                cmd_extension = ["--language", f"0:{track.language}"]
+                # Start with language and default-track settings
+                cmd_extension = [
+                    "--language", f"0:{track.language}",
+                    "--default-track", "0:no"  # Set default track flag to 'no'
+                ]
                 
                 # Add track name if it exists
                 if track.track_name:
                     cmd_extension.extend(["--track-name", f"0:{track.track_name}"])
+                
+                # Add other track properties if they're set
+                if track.properties:
+                    # Add forced track flag if set
+                    if track.properties.get('forced_track', False):
+                        cmd_extension.extend(["--forced-track", "0:yes"])
+                    
+                    # Add enabled track flag if not enabled
+                    if not track.properties.get('enabled_track', True):
+                        cmd_extension.extend(["--track-enabled", "0:no"])
+                    
+                    # Add hearing impaired flag if set
+                    if track.properties.get('hearing_impaired', False):
+                        cmd_extension.extend(["--hearing-impaired-flag", "0:yes"])
+                    
+                    # Add visual impaired flag if set
+                    if track.properties.get('visual_impaired', False):
+                        cmd_extension.extend(["--visual-impaired-flag", "0:yes"])
+                    
+                    # Add text descriptions flag if set
+                    if track.properties.get('text_descriptions', False):
+                        cmd_extension.extend(["--text-descriptions-flag", "0:yes"])
+                    
+                    # Add original language flag if set
+                    if track.properties.get('original_language', False):
+                        cmd_extension.extend(["--original-flag", "0:yes"])
+                    
+                    # Add commentary flag if set
+                    if track.properties.get('commentary', False):
+                        cmd_extension.extend(["--commentary-flag", "0:yes"])
                 
                 cmd_extension.append(track.corrected_path)
                 cmd.extend(cmd_extension)
